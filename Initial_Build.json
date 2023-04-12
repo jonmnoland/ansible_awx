@@ -1,0 +1,1034 @@
+# -----------------------------------------------------------------------
+#
+# Script to perform the initial build on an A10 Thunder.  The Management
+# interface needs to be configured prior to running script.
+#
+# Need to build out section
+# -----------------------------------------------------------------------
+
+
+
+import requests
+import json
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# -----------------------------------------------------------------------
+#
+# Variables used in the script that need to be converted to a file
+#
+# -----------------------------------------------------------------------
+
+# Set the IP address and login credentials for the A10 Thunder appliance
+thunder_ip = '10.31.254.242'
+username = 'admin'
+password = 'a10'
+new_hostname = 'PZDCT3550EINTH02'
+primary_dns = '10.28.24.52'
+secondary_dns = '10.28.24.53'
+deviceid = '2'
+setid = '1'
+trunkportaside = '11'
+trunkportbside = '12'
+trunkportasidename = "To BLF-101 Port 22"
+trunkportbsidename = "To BLF-102 Port 22"
+trunkport = "1"
+syncport = '1'
+failoverweight = '50'
+datavlan = '2518'
+datavlanip = '10.28.177.172'
+datavlanmask = '255.255.255.240'
+defaultroute = '10.28.170.1'
+peerip = '10.28.170.5'
+syncip = '192.168.1.2'
+floatingip = '10.28.170.4'
+partitionname = 'PZDCHAPXYINT02'
+partitionid = '1'
+partitionvlan = '2519'
+partitionip = '10.28.170.70'
+partitionmask = '255.255.255.192'
+partitiondefaultroute = '10.28.170.65'
+partitionfloatingip = '10.28.170.68'
+partitionpeerip = '10.28.170.69'
+
+
+# -----------------------------------------------------------------------
+#
+# Build AxAPI Authorization Key
+#
+# -----------------------------------------------------------------------
+
+# Set the URL for the AXAPI endpoint to retrieve an authorization key
+url = (
+    "https://" + thunder_ip + "/axapi/v3/auth"
+)
+
+# Set the JSON construct
+credentials = {
+    'credentials':{
+        "username":username,
+        "password":password
+    }
+}
+
+# Set the JSON header
+json_header = {
+    'Content-Type': 'application/json'
+    }
+
+# Send the HTTP request to retrieve an authorization key
+r = requests.post(
+    url, json=credentials, headers=json_header, verify=False
+)
+
+# Parse the authorization key from the response
+auth_key = r.json()['authresponse']['signature']
+
+# Build the authorization key for the remaining calls
+axapi_authkey = "A10 " + auth_key
+
+json_header = {
+    'Authorization': axapi_authkey,
+    'Content-Type': 'text/plain'
+    }
+
+# -----------------------------------------------------------------------
+#
+# Set the new hostname to be configured
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/hostname"
+)
+
+hostname = {
+    "hostname":{
+        "value":new_hostname
+    }
+}
+
+r = requests.post(
+    url, json=hostname, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure Terminal Prompt
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/terminal"
+)
+
+terminal = {
+  "terminal": {
+    "idle-timeout":60,
+    "prompt-cfg": {
+      "prompt":1,
+      "hostname":1
+    },
+  }
+}
+
+r = requests.post(
+    url, json=terminal, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure NTP servers
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/ntp/server/hostname"
+)
+
+ntp = {
+  "hostname-list": [
+    {
+      "host-servername":"10.26.10.100",
+      "prefer":1
+    },
+    {
+      "host-servername":"10.90.10.100"
+    },
+    {
+      "host-servername":"10.154.10.100",
+      "action":"enable"
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=ntp, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Set the time zone
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/timezone"
+)
+
+timezone = {
+    "timezone": {
+        "timezone-index-cfg": {
+            "timezone-index": "America/Chicago",
+            "nodst": 0
+        }
+    }
+}
+
+r = requests.post(
+    url, json=timezone, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Enable LLDP globally
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/network/lldp"
+)
+
+lldp = {
+    "lldp": {
+        "enable-cfg": {
+            "enable": 1,
+            "rx": 1,
+            "tx": 1
+        },
+        "notification-cfg": {
+            "notification": 0
+        },
+        "tx-set": {
+            "fast-count": 4,
+            "fast-interval": 1,
+            "hold": 4,
+            "tx-interval": 30,
+            "reinit-delay": 2
+        }
+    }
+}
+r = requests.post(
+    url, json=lldp, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Enable LLDP on the Management interface
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/management"
+)
+
+management = {
+    "management": {
+        "lldp": {
+            "enable-cfg": {
+                "rt-enable": 1,
+                "rx": 1,
+                "tx": 1
+            },
+            "notification-cfg": {
+                "notification": 0
+            },
+            "tx-dot1-cfg": {
+                "tx-dot1-tlvs": 0
+            },
+            "tx-tlvs-cfg": {
+                "tx-tlvs": 0
+            }
+        }
+    }
+}
+
+
+r = requests.post(
+    url, json=management, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure Ethernet Interfaces
+#
+# -----------------------------------------------------------------------
+
+# Configure Sync/Mirroring Interface
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/ethernet/" + syncport
+)
+
+syncinterface = {
+    "ethernet": {
+      "ifnum": syncport,
+      "action": "enable",
+      "lldp": {
+        "enable-cfg": {
+          "rt-enable":1,
+          "rx":1,
+          "tx":1
+        }
+      }
+    }
+}
+
+r = requests.post(
+    url, json=syncinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# Configure Physical Trunk Port - A Side
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/ethernet/" + trunkportaside
+)
+
+trunkainterface = {
+    "ethernet": {
+      "ifnum": trunkportaside,
+      "name": trunkportasidename,
+      "action":"enable",
+      "lldp": {
+        "enable-cfg": {
+          "rt-enable":1,
+          "rx":1,
+          "tx":1
+        }
+      },
+      "trunk-group-list": [
+        {
+          "trunk-number":1,
+          "type":"lacp"
+        }
+      ]
+}
+}
+
+r = requests.post(
+    url, json=trunkainterface, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# Configure Physical Trunk Port - B Side
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/ethernet/" + trunkportbside
+)
+
+trunkbinterface = {
+    "ethernet": {
+      "ifnum": trunkportbside,
+      "name": trunkportbsidename,
+      "action":"enable",
+      "lldp": {
+        "enable-cfg": {
+          "rt-enable":1,
+          "rx":1,
+          "tx":1
+        }
+      },
+      "trunk-group-list": [
+        {
+          "trunk-number":1,
+          "type":"lacp"
+        }
+      ]
+}
+}
+
+r = requests.post(
+    url, json=trunkbinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Set Primary and Secondary DNS
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/ip/dns/primary"
+)
+
+dns_primary = {
+  "primary": {
+    "ip-v4-addr": primary_dns
+  }
+}
+
+r = requests.post(
+    url, json=dns_primary, headers=json_header, verify=False
+)
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/ip/dns/secondary"
+)
+
+dns_secondary = {
+  "secondary": {
+    "ip-v4-addr": secondary_dns
+  }
+}
+
+r = requests.post(
+    url, json=dns_secondary, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure vrrp-a 
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/common"
+)
+
+vrrpa = {
+  "common": {
+    "device-id": deviceid,
+    "set-id": setid,
+    "action":"enable"
+  }
+}
+
+r = requests.post(
+    url, json=vrrpa, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure Fail-Over Policy Template
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/fail-over-policy-template"
+)
+
+failoverpolicy = {
+  "fail-over-policy-template-list": [
+    {
+      "name":"failover-non-preemption",
+      "trunk-cfg": [
+        {
+          "trunk":1,
+          "weight": failoverweight
+        }
+      ]
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=failoverpolicy, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure vrrp-a Peer Address
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/peer-group"
+)
+vrrppeer = {
+  "peer-group": {
+    "peer": {
+      "ip-peer-address-cfg": [
+        {
+          "ip-peer-address":peerip
+        }
+      ]
+    }
+  }
+}
+
+r = requests.post(
+    url, json=vrrppeer, headers=json_header, verify=False
+)
+
+# -----------------------------------------------------------------------
+#
+# Configure Default Route
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/ip/route/rib"
+)
+
+defaultrt = {
+  "rib-list": [
+    {
+      "ip-dest-addr":"0.0.0.0",
+      "ip-mask":"/0",
+      "ip-nexthop-ipv4": [
+        {
+          "ip-next-hop":defaultroute
+        }
+      ]
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=defaultrt, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure VLANs
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/network/vlan"
+)
+
+vlan = {
+  "vlan": {
+    "vlan-num": 610,
+      "tagged-eth-list": [
+        {
+          "tagged-ethernet-start":1,
+          "tagged-ethernet-end":1
+        }
+      ],
+    "ve": 610
+  }
+}
+
+r = requests.post(
+    url, json=vlan, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/network/vlan"
+)
+
+vlan = {
+  "vlan": {
+    "vlan-num": datavlan,
+      "tagged-trunk-list": [
+        {
+          "tagged-trunk-start": trunkport,
+          "tagged-trunk-end": trunkport
+        }
+      ],
+    "ve": datavlan
+  }
+}
+
+r = requests.post(
+    url, json=vlan, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure Virtual Ethernet Interfaces
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/ve"
+)
+
+ve = {
+  "ve-list": [
+    {   
+      "ifnum":610,
+      "ip": {
+        "address-list": [
+          {
+            "ipv4-address":syncip,
+            "ipv4-netmask":"255.255.255.240"
+          }
+        ]
+      }
+    },
+    {
+      "ifnum":datavlan,
+      "ip": {
+        "address-list": [
+          {
+            "ipv4-address":datavlanip,
+            "ipv4-netmask":datavlanmask
+          }
+        ]
+      }
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=ve, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure VRRP-A Interface
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/interface/ethernet"
+)
+
+vrrpinterface = {
+  "ethernet-list": [
+    {
+      "ethernet-val":syncport,
+      "vlan-cfg": [
+        {
+          "vlan":610
+        }
+      ]
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=vrrpinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure Floating-IP
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/vrid/0"
+)
+
+vridfloatingip = {
+  "vrid": {   
+      "vrid-val":0,
+      "floating-ip": {
+        "ip-address-cfg": [
+          {
+            "ip-address": floatingip
+          }
+        ]
+      }
+    }
+}
+
+r = requests.post(
+    url, json=vridfloatingip, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+
+
+# -----------------------------------------------------------------------
+#
+# Configure Trunk Name
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/trunk"
+)
+
+trunkname = {
+  "trunk": {
+      "ifnum": trunkport,
+      "name": "A10 to ACI Fabric"
+    }
+}
+
+r = requests.post(
+    url, json=trunkname, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure VRRP-A Preferred Sync Session VLAN 610
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/preferred-session-sync-port/ethernet"
+)
+
+vrrpinterface = {
+  "ethernet": {
+      "pre-eth": syncport,
+      "pre-vlan": 610
+    }
+}
+
+r = requests.post(
+    url, json=vrrpinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure VRRP-A Preferred Sync Session Data VLAN
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/preferred-session-sync-port/trunk"
+)
+
+vrrpinterface = {
+  "trunk": {
+      "pre-trunk": trunkport,
+      "pre-vlan": datavlan
+    }
+}
+
+r = requests.post(
+    url, json=vrrpinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Add Terminal Banner and Web Banner
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/banner"
+)
+
+banner = {
+    "banner": {
+    "exec-banner-cfg": {
+      "exec":1,
+      "exec-banner":"Report any suspicious activity to HCA - Information Technology & Services (IT&S) Help Desk at 615-344-4357. If you have any questions about what constitutes an acceptable use, please consult the written policies provided by HCA - IT&S or call HCA IT&S Help Desk."
+    },
+    "login-banner-cfg": {
+      "login":1,
+      "login-banner":"***************************************************************************\\n!!       W A R N I N G     -    W A R N I N G   -  W A R N I N G         !!\\n!!                                                                       !!\\n!!              Restricted to Authorized Users Only                      !!\\n!!                                                                       !!\\n!!   Unauthorized Access of This Device is Strictly Forbidden            !!\\n!!                                                                       !!\\n***************************************************************************\\nBy proceeding further I accept the following:\\n\\nYou are about to access an HCA - Information Technology & Services,\\nInc. (IT&S) computer system. This system is to be used only by\\nauthorized users of IT&S, its customers and affiliates. As a user\\nof this system, you have no expectation of privacy rights or\\nownership in anything you may create, store, send or receive\\non this system. By proceeding, your use of this system constitutes\\nyour consent to monitoring, retrieval, and disclosure of any\\ninformation within this system for all purposes deemed appropriate\\nby IT&S, including enforcement of rules concerning unacceptable\\nuses of this system. If you have any questions about what constitutes\\nan acceptable use by you, please consult the written policies provided\\nby IT&S and your company or call HCA IT&S Help Desk at 615-344-4357.\\n\\n*******************************************************************************\\n!!                                                                           !!\\n!!        P l e a s e  E n t e r  Y o u r  AAA  C r e d e n t i a l s        !!\\n!!                                                                           !!\\n*******************************************************************************"
+    }
+  }
+}
+
+r = requests.post(
+    url, json=banner, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/web-service"
+)
+
+webbanner = {
+  "web-service": {
+    "gui-idle":60,
+    "pre-login-message":"W A R N I N G - Restricted to Authorized Users Only - Unauthorized Access of This Device is Strictly Forbidden\r\n\r\nBy proceeding further I accept the following:  \r\n\r\nYou are about to access an HCA - Information Technology &amp; Services, Inc. (IT&amp;S) computer system. This system is to be used only by authorized users of IT&amp;S, its customers and affiliates. As a user of this system, you have no expectation of privacy rights or ownership in anything you may create, store, send or receive on this system. By proceeding, your use of this system constitutes your consent to monitoring, retrieval, and disclosure of any\r\ninformation within this system for all purposes deemed appropriate by IT&amp;S, including enforcement of rules concerning unacceptable uses of this system. If you have any questions about what constitutes an acceptable use by you, please consult the written policies provided by IT&amp;S and your company or call HCA IT&amp;S Help Desk at 615-344-4357.\r\nOK"
+  }
+}
+
+r = requests.post(
+    url, json=webbanner, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Create Partition
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/partition"
+)
+
+partition = {
+    "partition": {
+        "partition-name": partitionname,
+        "id": partitionid,
+        "application-type": "adc"
+    }
+
+}
+
+r = requests.post(
+    url, json=partition, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# Change to Partition
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/active-partition/" + partitionname
+)
+r = requests.post(
+    url, json=partition, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Items below here are specific to the partition specified above
+#
+# -----------------------------------------------------------------------
+
+print("\n")
+print(f"Items below this point are specific to partition: {partitionname}")
+print("\n")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Create VLAN
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/network/vlan"
+)
+
+vlan = {
+  "vlan": {
+    "vlan-num": partitionvlan,
+      "tagged-trunk-list": [
+        {
+          "tagged-trunk-start": trunkport,
+          "tagged-trunk-end": trunkport
+        }
+      ],
+    "ve": partitionvlan
+  }
+}
+
+r = requests.post(
+    url, json=vlan, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Configure Virtual Ethernet Interfaces
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/interface/ve"
+)
+
+ve = {
+  "ve-list": [
+    {   
+      "ifnum": partitionvlan,
+      "ip": {
+        "address-list": [
+          {
+            "ipv4-address": partitionip,
+            "ipv4-netmask": partitionmask
+          }
+        ]
+      }
+    }
+
+  ]
+}
+
+r = requests.post(
+    url, json=ve, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Configure Floating-IP
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/vrid/0"
+)
+
+vridfloatingip = {
+  "vrid": {   
+      "vrid-val":0,
+      "floating-ip": {
+        "ip-address-cfg": [
+          {
+            "ip-address": partitionfloatingip
+          }
+        ]
+      }
+    }
+}
+
+r = requests.post(
+    url, json=vridfloatingip, headers=json_header, verify=False
+)
+
+print("\n")
+print(f"URL: {url} status code is: {r.status_code}")
+print(r.text)
+print("\n")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Configure Fail-Over Policy Template
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/fail-over-policy-template"
+)
+
+failoverpolicy = {
+  "fail-over-policy-template-list": [
+    {
+      "name":"failover-non-preemption",
+      "trunk-cfg": [
+        {
+          "trunk":1,
+          "weight": failoverweight
+        }
+      ]
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=failoverpolicy, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Configure vrrp-a Peer Address
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/peer-group"
+)
+vrrppeer = {
+  "peer-group": {
+    "peer": {
+      "ip-peer-address-cfg": [
+        {
+          "ip-peer-address": partitionpeerip
+        }
+      ]
+    }
+  }
+}
+
+r = requests.post(
+    url, json=vrrppeer, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Configure VRRP-A Preferred Sync Session Data VLAN
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/vrrp-a/preferred-session-sync-port/trunk"
+)
+
+vrrpinterface = {
+  "trunk": {
+      "pre-trunk": trunkport,
+      "pre-vlan": partitionvlan
+    }
+}
+
+r = requests.post(
+    url, json=vrrpinterface, headers=json_header, verify=False
+)
+
+print(f"URL: {url} status code is: {r.status_code}")
+
+# -----------------------------------------------------------------------
+#
+# Partition - Configure Default Route
+#
+# -----------------------------------------------------------------------
+
+url = (
+    "https://" + thunder_ip + "/axapi/v3/ip/route/rib"
+)
+
+defaultrt = {
+  "rib-list": [
+    {
+      "ip-dest-addr":"0.0.0.0",
+      "ip-mask":"/0",
+      "ip-nexthop-ipv4": [
+        {
+          "ip-next-hop": partitiondefaultroute
+        }
+      ]
+    }
+  ]
+}
+
+r = requests.post(
+    url, json=defaultrt, headers=json_header, verify=False
+)
+print(f"URL: {url} status code is: {r.status_code}")
+
+
+# -----------------------------------------------------------------------
+#
+#
+#       Stuff above here works
+#
+#
+# -----------------------------------------------------------------------
+
+
+print("\n")
+print(f"URL: {url} status code is: {r.status_code}")
+print(r.text)
+print("\n")
